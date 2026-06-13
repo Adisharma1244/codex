@@ -204,7 +204,8 @@ async function runCode() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source_code: code,
-        language_id: LANGUAGES[currentLang].id,
+        language_id: LANGUAGES[currentLang].id,  // kept for backwards compat
+        language:    currentLang,                  // OneCompiler backend uses this
         stdin: document.getElementById("stdin-input").value || ""
       })
     });
