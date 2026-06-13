@@ -1,5 +1,4 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
-//  ───────────────────────────────────────────────────
 const AI_API = "https://adisharm4988-easydebuger.hf.space/api/explain-error";
 const JUDGE0   = "/api/compile";
 
@@ -70,7 +69,6 @@ require.config({
 });
 
 require(["vs/editor/editor.main"], function () {
-  // Define a custom dark theme
   monaco.editor.defineTheme("ai-dark", {
     base: "vs-dark",
     inherit: true,
@@ -119,16 +117,13 @@ document.querySelectorAll(".lang-pill").forEach(pill => {
     if (lang === currentLang) return;
     currentLang = lang;
 
-    // Update pill states
     document.querySelectorAll(".lang-pill").forEach(p => p.classList.remove("active"));
     pill.classList.add("active");
 
-    // Update editor language + template
     const langDef = LANGUAGES[lang];
     monaco.editor.setModelLanguage(editor.getModel(), langDef.monaco);
     editor.setValue(langDef.template);
 
-    // Reset panels
     resetPanels();
   });
 });
@@ -140,7 +135,6 @@ document.getElementById("btn-reset").addEventListener("click", () => {
 });
 
 function resetPanels() {
-  // Clear terminal
   const term = document.getElementById("terminal");
   term.innerHTML = `
     <div class="terminal-idle">
@@ -149,7 +143,6 @@ function resetPanels() {
     </div>`;
   document.getElementById("terminal-wrap").className = "terminal-wrap";
 
-  // Clear AI panel
   const ai = document.getElementById("ai");
   ai.innerHTML = `
     <div class="ai-idle">
@@ -181,7 +174,6 @@ async function runCode() {
 
   if (!code) return;
 
-  // ── Loading state ─────────────────────────────────────────────────────────────
   btn.disabled = true;
   btn.innerHTML = `<span class="run-icon">⟳</span> RUNNING`;
   setStatus("RUNNING", "running");
@@ -197,7 +189,6 @@ async function runCode() {
       <span class="t-text">Running ${LANGUAGES[currentLang].label} code…<span class="t-cursor"></span></span>
     </div>`;
 
-  // Reset AI panel
   document.getElementById("ai").innerHTML = `
     <div class="ai-idle">
       <div class="ai-icon">⬡</div>
@@ -208,37 +199,49 @@ async function runCode() {
   document.getElementById("panel-ai").className = "panel";
 
   try {
-   
     const res = await fetch(JUDGE0, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json" 
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source_code: code,
         language_id: LANGUAGES[currentLang].id,
         stdin: document.getElementById("stdin-input").value || ""
       })
     });
-    
 
     if (!res.ok) throw new Error(`Compiler API error: ${res.status}`);
     const data = await res.json();
+
+    // ── FIX: Handle Judge0 execution-level errors (TLE, Runtime Error, etc.) ──
+    // Judge0 status id > 3 means something went wrong:
+    // 4 = Wrong Answer, 5 = Time Limit Exceeded, 6 = Compile Error,
+    // 7-12 = Runtime Errors, etc.
+    if (data.status && data.status.id > 3) {
+      const statusDesc = data.status.description || "Execution Error";
+      // Treat the status description as a stderr message if no other error output exists
+      if (!data.stderr && !data.compile_output) {
+        data.stderr = `[${statusDesc}]`;
+      }
+    }
 
     const stdout  = (data.stdout  || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const stderr  = (data.stderr  || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const compile = (data.compile_output || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const isError = !!(stderr || compile);
 
-    // ── Build interleaved terminal lines ──────────────────────────────────────
+    // ── Build terminal lines ──────────────────────────────────────────────────
     let html = "";
     let lineNo = 1;
 
+    // ── FIX: Only strip the single trailing empty string caused by a final \n ──
+    // The old code skipped ALL empty lines when text ended with \n, which could
+    // swallow real blank lines in the middle of output.
     const addLines = (text, cls) => {
       if (!text) return;
-      text.split("\n").forEach(line => {
-        // skip trailing empty last line
-        if (line === "" && text.endsWith("\n") && lineNo > 1) return;
+      const lines = text.split("\n");
+      // Remove only the last element if it's an empty string from a trailing newline
+      if (lines[lines.length - 1] === "") lines.pop();
+      lines.forEach(line => {
         html += `<div class="t-line ${cls}">
           <span class="t-gutter">${lineNo++}</span>
           <span class="t-text">${escapeHtml(line)}</span>
@@ -257,7 +260,6 @@ async function runCode() {
       </div>`;
     }
 
-    // Exit line
     const exitCls  = isError ? "t-exit-err" : "t-exit-ok";
     const exitIcon = isError ? "✖" : "✔";
     const exitMsg  = isError ? "Process exited with errors" : "Process exited successfully";
@@ -295,12 +297,10 @@ async function runCode() {
 }
 
 // ─── AI Error Explanation ─────────────────────────────────────────────────────
-// ✅ FIXED: Now sends code and error to backend - Backend generates the prompt!
 async function explainError(code, errorMsg) {
   const aiPanel = document.getElementById("ai");
   const aiBadge = document.getElementById("ai-badge");
 
-  // Show thinking animation
   aiPanel.innerHTML = `
     <div class="ai-thinking-anim">
       <span>AI analyzing</span>
@@ -312,22 +312,16 @@ async function explainError(code, errorMsg) {
   aiBadge.className = "panel-badge ai-thinking";
 
   try {
-    // ✅ FIXED: Send code and error to backend
-    // Backend will create the proper prompt and call Groq
     const res = await fetch(AI_API, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code: code,                          // ✅ Send code
-        error: errorMsg,                     // ✅ Send error
-        language: currentLang,               // ✅ Send language
-        user_id: "debug_user_001"
+        code:     code,
+        error:    errorMsg,
+        language: currentLang,
+        user_id:  "debug_user_001"
       })
     });
-
-    console.log("AI Response Status:", res.status);
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
@@ -335,20 +329,15 @@ async function explainError(code, errorMsg) {
     }
 
     const data = await res.json();
-    console.log("AI Response:", data);
-
     const aiText = data?.data?.[0] || data?.output || data?.response || data?.text || "";
-    
-    if (!aiText) {
-      throw new Error("Empty response from AI");
-    }
+
+    if (!aiText) throw new Error("Empty response from AI");
 
     renderAIResponse(aiText);
     aiBadge.textContent = "DONE";
     aiBadge.className = "panel-badge success";
 
   } catch (err) {
-    console.error("AI Error:", err);
     aiPanel.innerHTML = `
       <div style="color: var(--red); padding: 16px; font-size: 12px; line-height: 1.6;">
         <strong>⚠️ AI Error:</strong> ${escapeHtml(err.message)}
@@ -358,7 +347,6 @@ async function explainError(code, errorMsg) {
         <br>2. Check that GROQ_API_KEY is set in .env
         <br>3. Verify backend is accessible from frontend domain
       </div>`;
-
     aiBadge.textContent = "FAILED";
     aiBadge.className = "panel-badge error";
   }
@@ -368,7 +356,6 @@ async function explainError(code, errorMsg) {
 function renderAIResponse(text) {
   const aiPanel = document.getElementById("ai");
 
-  // Parse sections from the AI response
   const sections = {
     reason:  extract(text, "REASON"),
     line:    extract(text, "LINE ISSUE"),
@@ -376,7 +363,6 @@ function renderAIResponse(text) {
     explain: extract(text, "EXPLANATION")
   };
 
-  // If we couldn't parse structured sections, show raw response
   const hasStructure = sections.reason || sections.fix || sections.explain;
 
   if (!hasStructure) {
@@ -439,7 +425,6 @@ function escapeHtml(str) {
 let bhaiCooldownActive = false;
 let bhaiCooldownInterval = null;
 
-// Enter key triggers the button
 document.getElementById("bhai-goal").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !bhaiCooldownActive) logicDebug();
 });
@@ -447,14 +432,12 @@ document.getElementById("bhai-goal").addEventListener("keydown", (e) => {
 async function logicDebug() {
   if (bhaiCooldownActive) return;
 
-  // ── Gather all context ──────────────────────────────────────────────────────
-  const code        = editor.getValue().trim();
-  const language    = currentLang;
+  const code         = editor.getValue().trim();
+  const language     = currentLang;
   const actualOutput = Array.from(document.querySelectorAll("#terminal .t-stdout .t-text, #terminal .t-stderr .t-text"))
     .map(el => el.textContent).join("\n").trim();
-  const userGoal    = document.getElementById("bhai-goal").value.trim();
+  const userGoal     = document.getElementById("bhai-goal").value.trim();
 
-  // ── Validation ──────────────────────────────────────────────────────────────
   if (!userGoal) {
     document.getElementById("bhai-goal").focus();
     showBhaiResult("warn", "⚠️ Pehle apna goal likho bhai — kya chahiye tha output mein?");
@@ -465,8 +448,6 @@ async function logicDebug() {
     return;
   }
 
-  // ── Build the prompt string (everything goes into the `error` field so ──────
-  // ── the existing FastAPI backend doesn't need any changes) ──────────────────
   const prompt = `[LOGIC DEBUG REQUEST — Not a syntax error]
 
 Language: ${language}
@@ -495,20 +476,18 @@ SOCHO: [Ask them one guiding question to push their thinking AND INDICATE TO THE
 
 Keep it short, friendly, and do write the fix and so the main fix show the line and fix.`;
 
-  // ── UI: loading state ───────────────────────────────────────────────────────
   const btn = document.getElementById("btn-bhai");
   btn.disabled = true;
   document.getElementById("btn-bhai-text").textContent = "Thinking...";
   showBhaiResult("thinking", "");
 
   try {
-    // ── Send to the SAME backend endpoint as syntax errors ────────────────────
     const res = await fetch(AI_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         code:     code,
-        error:    prompt,     // ← entire prompt bundled into the error field
+        error:    prompt,
         language: language,
         user_id:  "logic_debug_user"
       })
@@ -519,8 +498,8 @@ Keep it short, friendly, and do write the fix and so the main fix show the line 
       throw new Error(`Backend error (${res.status}): ${errData.detail || res.statusText}`);
     }
 
-    const data    = await res.json();
-    const aiText  = data?.data?.[0] || data?.output || data?.response || data?.text || "";
+    const data   = await res.json();
+    const aiText = data?.data?.[0] || data?.output || data?.response || data?.text || "";
     if (!aiText) throw new Error("Empty response from AI");
 
     renderBhaiResponse(aiText);
@@ -542,7 +521,6 @@ function renderBhaiResponse(text) {
   const hasStructure = samajh || hint || socho;
 
   if (!hasStructure) {
-    // fallback: show raw
     showBhaiResult("success", text);
     return;
   }
@@ -606,12 +584,12 @@ function extractBhai(text, label) {
 function startBhaiCooldown(seconds) {
   bhaiCooldownActive = true;
 
-  const btn        = document.getElementById("btn-bhai");
-  const timerEl    = document.getElementById("bhai-cooldown-timer");
-  const wrapEl     = document.getElementById("bhai-cooldown-wrap");
-  const goalInput  = document.getElementById("bhai-goal");
+  const btn       = document.getElementById("btn-bhai");
+  const timerEl   = document.getElementById("bhai-cooldown-timer");
+  const wrapEl    = document.getElementById("bhai-cooldown-wrap");
+  const goalInput = document.getElementById("bhai-goal");
 
-  btn.disabled     = true;
+  btn.disabled       = true;
   goalInput.disabled = true;
   wrapEl.classList.add("visible");
   document.getElementById("btn-bhai-text").textContent = "Cooldown...";
