@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <!-- This section gives Google all its keywords but remains 100% invisible to your users -->
+
+  <title>CompileX</title>
+  <link rel="icon" type="image/jpeg" href="complieX logo.jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+
+<body>
+
+<!-- google -->
+<section id="about-compilex" style="display: none;" aria-hidden="true">
+    <h1>CompileX - Advanced Online Compiler & AI Code Debugger</h1>
+    <p>Welcome to CompileX, a next-generation online compiler and cloud-based integrated development environment (IDE) featuring an advanced, real-time AI debugger. Designed specifically for university IT students, software engineers, and programming enthusiasts, CompileX eliminates the limitations of traditional compilers by diagnosing both syntax errors and complex logical errors on the fly.</p>
+
+    <h2>Key Platform Features & Capabilities</h2>
+    <ul>
+        <li><strong>AI-Powered Logical Error Detection:</strong> Traditional online code editors only highlight syntax issues like missing semicolons. CompileX uses a conversational AI companion to analyze your programming logic, identify infinite loops, diagnose incorrect algorithms, and offer a detailed explanation in Hinglish and plain English.</li>
+        <li><strong>Zero-Setup Cloud Execution:</strong> Compile, run, and execute code instantly from any web browser without installing heavy local compilers or setting up environment variables.</li>
+        <li><strong>Interactive Code Analysis:</strong> Submit your runtime output expectations using our interactive "Bhai, Output Galat Hai!" module, allowing the AI to understand exactly what output you intended to generate and map out the required logic fixes.</li>
+        <li><strong>Sleek Dark Mode IDE:</strong> A high-performance, mobile-optimized programming interface featuring syntax highlighting, responsive layouts, and an integrated terminal view.</li>
+    </ul>
+
+    <h2>Supported Programming Languages & Frameworks</h2>
+    <p>CompileX serves as a multi-language execution hub providing dedicated environments for core programming languages:</p>
+    <ul>
+        <li><strong>Java Online Compiler:</strong> Perfect for handling object-oriented programming (OOPs) principles, testing class structures, debugging complex runtime exceptions like java.lang.NullPointerException, and preparing for B.Tech university coding examinations and labs.</li>
+        <li><strong>Python Online Compiler:</strong> Rapidly execute Python scripts, test data structures, debug dictionary lookups, check indentation alignment, and troubleshoot runtime script failures with custom AI recommendations.</li>
+        <li><strong>C++ Online Compiler:</strong> Write and test high-speed C and C++ source code. Let the AI instantly break down cryptic compilation messages, pointer misalignments, and segmentation fault (core dumped) boundaries.</li>
+        <li><strong>JavaScript Online Compiler:</strong> Run core frontend logic, test algorithmic arrays, analyze asynchronous functions, and execute syntax variations inside a sandbox environment.</li>
+    </ul>
+
+    <h2>The Ultimate Learning Companion for Code Debugging</h2>
+    <p>CompileX isn't just an online execution tool; it acts as a smart coding partner. When your program builds successfully but yields the wrong output, our custom debugging logic evaluates your conditional parameters, variables, and math formulas. It explains the solution conversationally so you learn how to think like an engineer while seamlessly cleaning up your script.</p>
+</section>
+
+
+  <!-- Background grid -->
+  <div class="bg-grid"></div>
+
+  <div class="app-shell">
+
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <span class="logo-bracket">[</span>
+        <span class="logo-text">CompileX</span>
+        
+        <span class="logo-bracket">]</span>
+      </div>
+      <div class="header-meta">
+        <span class="status-dot"></span>
+        <span id="status-label">READY</span>
+      </div>
+    </header>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="lang-selector">
+        <label>LANGUAGE</label>
+        <div class="lang-pills">
+          <button class="lang-pill active" data-lang="java">Java</button>
+          <button class="lang-pill" data-lang="python">Python</button>
+          <button class="lang-pill" data-lang="cpp">C++</button>
+          <button class="lang-pill" data-lang="javascript">JavaScript</button>
+        </div>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-reset" id="btn-reset" title="Reset to template">↺ Reset</button>
+        <button class="btn-run" id="btn-run" onclick="runCode()">
+          <span class="run-icon">▶</span> RUN
+        </button>
+      </div>
+    </div>
+
+    <!-- Editor -->
+    <div class="editor-wrapper">
+      <div class="editor-label">CODE</div>
+      <div id="editor"></div>
+    </div>
+
+    <!-- Custom Input (stdin) -->
+    <div class="stdin-wrap">
+      <div class="stdin-bar">
+        <div class="terminal-dots">
+          <span class="tdot tdot-red"></span>
+          <span class="tdot tdot-yellow"></span>
+          <span class="tdot tdot-green"></span>
+        </div>
+        <span class="terminal-title">STDIN — CUSTOM INPUT</span>
+        <span class="stdin-hint">optional · fed to your program at runtime</span>
+      </div>
+      <textarea
+        id="stdin-input"
+        class="stdin-body"
+        placeholder="Enter input values here (one per line)&#10;e.g.&#10;5&#10;hello world&#10;3.14"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-wrap" id="terminal-wrap">
+      <div class="terminal-bar">
+        <div class="terminal-dots">
+          <span class="tdot tdot-red"></span>
+          <span class="tdot tdot-yellow"></span>
+          <span class="tdot tdot-green"></span>
+        </div>
+        <span class="terminal-title">TERMINAL</span>
+        <span class="panel-badge" id="output-badge">—</span>
+      </div>
+      <div id="terminal" class="terminal-body">
+        <div class="terminal-idle">
+          <span class="terminal-prompt">▶</span>
+          <span class="terminal-idle-text">Click <strong>RUN</strong> to execute your code…</span>
+         
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Debugger panel (full-width, below terminal) -->
+    <div class="panels">
+      <div class="panel" id="panel-ai" style="grid-column: 1 / -1;">
+        <div class="panel-header">
+          <span class="panel-title">AI DEBUGGER</span>
+          <span class="panel-badge ai-badge" id="ai-badge">—</span>
+        </div>
+        <div id="ai" class="panel-content ai-content">
+          <div class="ai-idle">
+            <div class="ai-icon">⬡</div>
+            <p>AI will explain errors and suggest fixes when your code fails.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         BHAI, OUTPUT GALAT HAI — Logic Debugger
+    ═══════════════════════════════════════════════════ -->
+    <div class="bhai-section" id="bhai-section">
+
+      <div class="bhai-header">
+        <div class="bhai-header-left">
+          <span class="bhai-emoji">🤔</span>
+          <div>
+            <div class="bhai-title">Bhai, Output Galat Hai!</div>
+            <div class="bhai-subtitle">Code compiled but result is wrong? Tell the AI what you <em>wanted</em> — it'll guide you to the logic bug.</div>
+          </div>
+        </div>
+        <div class="bhai-cooldown-wrap" id="bhai-cooldown-wrap">
+          <span class="bhai-cooldown-label">next request in</span>
+          <span class="bhai-cooldown-timer" id="bhai-cooldown-timer">45</span>
+          <span class="bhai-cooldown-label">sec</span>
+        </div>
+      </div>
+
+      <div class="bhai-body">
+        <div class="bhai-input-row">
+          <div class="bhai-input-wrap">
+            <label class="bhai-input-label" for="bhai-goal">WHAT DID YOU WANT?</label>
+            <input
+              type="text"
+              id="bhai-goal"
+              class="bhai-goal-input"
+              placeholder='e.g. "Seedha pyramid banana tha" or "Sum of even numbers chahiye tha"'
+              maxlength="200"
+            />
+          </div>
+          <button class="btn-bhai" id="btn-bhai" onclick="logicDebug()">
+            <span class="bhai-btn-icon">🔍</span>
+            <span id="btn-bhai-text">Debug Logic</span>
+          </button>
+        </div>
+
+        <!-- AI response renders here -->
+        <div class="bhai-result" id="bhai-result">
+          <div class="bhai-result-idle">
+            <span>Describe your goal above, then click <strong>Debug Logic</strong> → AI will hint at what's wrong without spoiling the answer.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  <script src="scripit.js"></script>
+</body>
+</html>
