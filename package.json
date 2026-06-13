@@ -5,7 +5,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "monaco-editor": "^0.55.1",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.7.0",
     "ws": "^8.21.0"
   }
 }

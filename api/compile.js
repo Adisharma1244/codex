@@ -1,12 +1,12 @@
-const fetch = require('node-fetch'); // अगर यह एरर दे, तो इसे हटा देना, वर्सेल में fetch इन-बिल्ट होता है।
+const fetch = require('node-fetch');
 
 export default async function handler(req, res) {
-    // CORS हेडर्स सेट करना ताकि फ्रंटएंड से रिक्वेस्ट आ सके
+    
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 
-    // अगर प्री-फ्लाइट OPTIONS रिक्वेस्ट है तो यहीं एंड करो
+    
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
