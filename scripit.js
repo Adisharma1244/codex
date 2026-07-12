@@ -1,6 +1,7 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
 const AI_API = "https://adisharm4988-easydebuger.hf.space/api/explain-error";
-const JUDGE0   = "/api/compile";
+const JUDGE0   = "https://ce.judge0.com/submissions?base64_encoded=false&wait=true";
+const JUDGE0_KEY = "2a555f2199acc13abd4b58ef6bf6946b";
 
 // ─── Language definitions ─────────────────────────────────────────────────────
 const LANGUAGES = {
@@ -11,7 +12,7 @@ const LANGUAGES = {
     template: `public class Main {
     public static void main(String[] args) {
         System.out.println("Hello, World!");
-        
+
         // Try some arithmetic
         int a = 5, b = 3;
         System.out.println("Sum: " + (a + b));
@@ -43,8 +44,8 @@ using namespace std;
 
 int main() {
     cout << "Hello, World!" << endl;
-    
-    
+
+
     return 0;
 }`
   },
@@ -62,6 +63,10 @@ console.log("Hello, World!");
 // ─── State ────────────────────────────────────────────────────────────────────
 let editor;
 let currentLang = "java";
+let lastRunOutput = "";     // stdout+stderr text from the most recent run, for chat context
+let chatHistory = [];       // { role: 'user'|'ai', text }
+let runClickCount = 0;
+const INTERSTITIAL_EVERY = 5;
 
 // ─── Monaco setup ─────────────────────────────────────────────────────────────
 require.config({
@@ -131,6 +136,7 @@ document.querySelectorAll(".lang-pill").forEach(pill => {
 // ─── Reset button ─────────────────────────────────────────────────────────────
 document.getElementById("btn-reset").addEventListener("click", () => {
   editor.setValue(LANGUAGES[currentLang].template);
+  document.getElementById("stdin-input").value = "";
   resetPanels();
 });
 
@@ -141,20 +147,23 @@ function resetPanels() {
       <span class="terminal-prompt">▶</span>
       <span class="terminal-idle-text">Click <strong>RUN</strong> to execute your code…</span>
     </div>`;
-  document.getElementById("terminal-wrap").className = "terminal-wrap";
-
-  const ai = document.getElementById("ai");
-  ai.innerHTML = `
-    <div class="ai-idle">
-      <div class="ai-icon">⬡</div>
-      <p>AI will explain errors and suggest fixes when your code fails.</p>
-    </div>`;
+  document.getElementById("input-panel").className = "io-panel";
+  document.getElementById("output-panel").className = "io-panel";
 
   document.getElementById("output-badge").textContent = "—";
   document.getElementById("output-badge").className = "panel-badge";
   document.getElementById("ai-badge").textContent = "—";
   document.getElementById("ai-badge").className = "panel-badge ai-badge";
-  document.getElementById("panel-ai").className = "panel";
+
+  lastRunOutput = "";
+  chatHistory = [];
+  const chat = document.getElementById("ai-chat");
+  chat.innerHTML = `
+    <div class="ai-idle" id="ai-idle-msg">
+      <div class="ai-icon">⬡</div>
+      <p>Ask the AI about your code errors or logic issues.<br>Run your code first to see AI explanations.</p>
+    </div>`;
+
   setStatus("READY", "");
 }
 
@@ -167,17 +176,24 @@ function setStatus(label, type) {
 
 // ─── Run Code ─────────────────────────────────────────────────────────────────
 async function runCode() {
-  const code = editor.getValue().trim();
-  const btn  = document.getElementById("btn-run");
-  const term = document.getElementById("terminal");
-  const wrap = document.getElementById("terminal-wrap");
+  const code  = editor.getValue().trim();
+  const stdin = document.getElementById("stdin-input").value;
+  const btn   = document.getElementById("btn-run");
+  const term  = document.getElementById("terminal");
+  const outputPanel = document.getElementById("output-panel");
 
   if (!code) return;
+
+  // Ad interstitial: count every RUN click
+  runClickCount++;
+  if (runClickCount % INTERSTITIAL_EVERY === 0) {
+    showInterstitialAd();
+  }
 
   btn.disabled = true;
   btn.innerHTML = `<span class="run-icon">⟳</span> RUNNING`;
   setStatus("RUNNING", "running");
-  wrap.className = "terminal-wrap";
+  outputPanel.className = "io-panel";
 
   const badge = document.getElementById("output-badge");
   badge.textContent = "…";
@@ -189,60 +205,35 @@ async function runCode() {
       <span class="t-text">Running ${LANGUAGES[currentLang].label} code…<span class="t-cursor"></span></span>
     </div>`;
 
-  document.getElementById("ai").innerHTML = `
-    <div class="ai-idle">
-      <div class="ai-icon">⬡</div>
-      <p>AI will explain errors and suggest fixes when your code fails.</p>
-    </div>`;
-  document.getElementById("ai-badge").textContent = "—";
-  document.getElementById("ai-badge").className = "panel-badge ai-badge";
-  document.getElementById("panel-ai").className = "panel";
-
   try {
     const res = await fetch(JUDGE0, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${JUDGE0_KEY}`
+      },
       body: JSON.stringify({
         source_code: code,
-        language_id: LANGUAGES[currentLang].id,  // kept for backwards compat
-        language:    currentLang,                  // OneCompiler backend uses this
-        stdin: document.getElementById("stdin-input").value || ""
+        language_id: LANGUAGES[currentLang].id,
+        stdin: stdin
       })
     });
 
     if (!res.ok) throw new Error(`Compiler API error: ${res.status}`);
     const data = await res.json();
 
-    // ── FIX: Handle Judge0 execution-level errors (TLE, Runtime Error, etc.) ──
-    // Judge0 status id > 3 means something went wrong:
-    // 4 = Wrong Answer, 5 = Time Limit Exceeded, 6 = Compile Error,
-    // 7-12 = Runtime Errors, etc.
-    if (data.status && data.status.id > 3) {
-      const statusDesc = data.status.description || "Execution Error";
-      // Treat the status description as a stderr message if no other error output exists
-      if (!data.stderr && !data.compile_output) {
-        data.stderr = `[${statusDesc}]`;
-      }
-    }
-
     const stdout  = (data.stdout  || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const stderr  = (data.stderr  || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const compile = (data.compile_output || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const isError = !!(stderr || compile);
 
-    // ── Build terminal lines ──────────────────────────────────────────────────
     let html = "";
     let lineNo = 1;
 
-    // ── FIX: Only strip the single trailing empty string caused by a final \n ──
-    // The old code skipped ALL empty lines when text ended with \n, which could
-    // swallow real blank lines in the middle of output.
     const addLines = (text, cls) => {
       if (!text) return;
-      const lines = text.split("\n");
-      // Remove only the last element if it's an empty string from a trailing newline
-      if (lines[lines.length - 1] === "") lines.pop();
-      lines.forEach(line => {
+      text.split("\n").forEach(line => {
+        if (line === "" && text.endsWith("\n") && lineNo > 1) return;
         html += `<div class="t-line ${cls}">
           <span class="t-gutter">${lineNo++}</span>
           <span class="t-text">${escapeHtml(line)}</span>
@@ -268,12 +259,15 @@ async function runCode() {
 
     term.innerHTML = html;
     term.scrollTop = term.scrollHeight;
-    wrap.className = "terminal-wrap" + (isError ? " has-error" : " has-output");
+    outputPanel.className = "io-panel" + (isError ? " has-error" : " has-output");
+
+    lastRunOutput = (stdout + "\n" + stderr + "\n" + compile).trim();
 
     if (isError) {
       badge.textContent = "ERROR";
       badge.className   = "panel-badge error";
       setStatus("ERROR", "error");
+      // Syntax/runtime error: AI catches it automatically, no click needed
       explainError(code, stderr || compile);
     } else {
       badge.textContent = "OK";
@@ -287,7 +281,7 @@ async function runCode() {
         <span class="t-text">⚠ ${escapeHtml(err.message)}</span>
       </div>
       <div class="t-exit-line t-exit-err">✖ Process failed</div>`;
-    wrap.className = "terminal-wrap has-error";
+    outputPanel.className = "io-panel has-error";
     badge.textContent = "ERR";
     badge.className   = "panel-badge error";
     setStatus("ERROR", "error");
@@ -297,18 +291,116 @@ async function runCode() {
   }
 }
 
-// ─── AI Error Explanation ─────────────────────────────────────────────────────
-async function explainError(code, errorMsg) {
-  const aiPanel = document.getElementById("ai");
-  const aiBadge = document.getElementById("ai-badge");
+// ─── AI Chat helpers ───────────────────────────────────────────────────────────
+function clearAiIdle() {
+  const idle = document.getElementById("ai-idle-msg");
+  if (idle) idle.remove();
+}
 
-  aiPanel.innerHTML = `
-    <div class="ai-thinking-anim">
-      <span>AI analyzing</span>
-      <div class="ai-thinking-dots">
-        <span></span><span></span><span></span>
+function scrollChatToBottom() {
+  const chat = document.getElementById("ai-chat");
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function addUserChatBubble(text) {
+  clearAiIdle();
+  const chat = document.getElementById("ai-chat");
+  const el = document.createElement("div");
+  el.className = "chat-msg user";
+  el.innerHTML = `
+    <span class="chat-msg-label">You</span>
+    <div class="chat-bubble">${escapeHtml(text)}</div>`;
+  chat.appendChild(el);
+  scrollChatToBottom();
+}
+
+function addAiThinkingBubble() {
+  clearAiIdle();
+  const chat = document.getElementById("ai-chat");
+  const el = document.createElement("div");
+  el.className = "chat-msg ai";
+  el.id = "ai-thinking-bubble";
+  el.innerHTML = `
+    <span class="chat-msg-label">AI Assistant</span>
+    <div class="chat-bubble">
+      <div class="ai-thinking-anim">
+        <span>Analyzing</span>
+        <div class="ai-thinking-dots"><span></span><span></span><span></span></div>
       </div>
     </div>`;
+  chat.appendChild(el);
+  scrollChatToBottom();
+}
+
+function removeAiThinkingBubble() {
+  const el = document.getElementById("ai-thinking-bubble");
+  if (el) el.remove();
+}
+
+// Renders a structured or raw AI response as a chat bubble
+function addAiResponseBubble(text) {
+  removeAiThinkingBubble();
+  const chat = document.getElementById("ai-chat");
+  const el = document.createElement("div");
+  el.className = "chat-msg ai";
+
+  const sections = {
+    reason:   extractSection(text, "REASON"),
+    line:     extractSection(text, "LINE ISSUE"),
+    fix:      extractSection(text, "FIX"),
+    explain:  extractSection(text, "EXPLANATION"),
+    samajh:   extractSection(text, "SAMAJH"),
+    hint:     extractSection(text, "HINT"),
+    socho:    extractSection(text, "SOCHO"),
+  };
+
+  const hasStructure = Object.values(sections).some(Boolean);
+
+  let bodyHtml;
+  if (!hasStructure) {
+    bodyHtml = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
+  } else {
+    let inner = `<div class="ai-response">`;
+    if (sections.reason)  inner += block("reason",   "⚠ Reason", sections.reason);
+    if (sections.samajh)  inner += block("reason",   "🧠 Samajh", sections.samajh);
+    if (sections.line)    inner += block("reason",   "📍 Line Issue", sections.line);
+    if (sections.fix)     inner += block("fix",      "✓ Suggested Fix", sections.fix);
+    if (sections.hint)    inner += block("hint",     "💡 Hint", sections.hint);
+    if (sections.explain) inner += block("explain",  "💡 Explanation", sections.explain);
+    if (sections.socho)   inner += block("question", "🤔 Socho...", sections.socho);
+    inner += `</div>`;
+    bodyHtml = `<div class="chat-bubble">${inner}</div>`;
+  }
+
+  el.innerHTML = `<span class="chat-msg-label">AI Assistant</span>${bodyHtml}`;
+  chat.appendChild(el);
+  scrollChatToBottom();
+
+  function block(cls, label, body) {
+    return `<div class="ai-block ${cls}">
+      <div class="ai-block-label">${label}</div>
+      <div class="ai-block-body">${escapeHtml(body)}</div>
+    </div>`;
+  }
+}
+
+function addErrorChatBubble(message) {
+  removeAiThinkingBubble();
+  const chat = document.getElementById("ai-chat");
+  const el = document.createElement("div");
+  el.className = "chat-msg ai";
+  el.innerHTML = `
+    <span class="chat-msg-label">AI Assistant</span>
+    <div class="chat-bubble" style="color: var(--red);">⚠️ ${escapeHtml(message)}</div>`;
+  chat.appendChild(el);
+  scrollChatToBottom();
+}
+
+// ─── AI Error Explanation (automatic, on syntax/runtime error) ────────────────
+async function explainError(code, errorMsg) {
+  const aiBadge = document.getElementById("ai-badge");
+
+  addAiThinkingBubble();
   aiBadge.textContent = "THINKING";
   aiBadge.className = "panel-badge ai-thinking";
 
@@ -317,10 +409,10 @@ async function explainError(code, errorMsg) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code:     code,
-        error:    errorMsg,
+        code: code,
+        error: errorMsg,
         language: currentLang,
-        user_id:  "debug_user_001"
+        user_id: "debug_user_001"
       })
     });
 
@@ -331,166 +423,89 @@ async function explainError(code, errorMsg) {
 
     const data = await res.json();
     const aiText = data?.data?.[0] || data?.output || data?.response || data?.text || "";
-
     if (!aiText) throw new Error("Empty response from AI");
 
-    renderAIResponse(aiText);
+    addAiResponseBubble(aiText);
+    chatHistory.push({ role: "ai", text: aiText });
     aiBadge.textContent = "DONE";
     aiBadge.className = "panel-badge success";
 
   } catch (err) {
-    aiPanel.innerHTML = `
-      <div style="color: var(--red); padding: 16px; font-size: 12px; line-height: 1.6;">
-        <strong>⚠️ AI Error:</strong> ${escapeHtml(err.message)}
-        <br><br>
-        <strong>Troubleshooting:</strong>
-        <br>1. Make sure backend is running on: ${AI_API}
-        <br>2. Check that GROQ_API_KEY is set in .env
-        <br>3. Verify backend is accessible from frontend domain
-      </div>`;
+    addErrorChatBubble(`AI Error: ${err.message}`);
     aiBadge.textContent = "FAILED";
     aiBadge.className = "panel-badge error";
   }
 }
 
-// ─── Render AI Response ───────────────────────────────────────────────────────
-function renderAIResponse(text) {
-  const aiPanel = document.getElementById("ai");
-
-  const sections = {
-    reason:  extract(text, "REASON"),
-    line:    extract(text, "LINE ISSUE"),
-    fix:     extract(text, "FIX"),
-    explain: extract(text, "EXPLANATION")
-  };
-
-  const hasStructure = sections.reason || sections.fix || sections.explain;
-
-  if (!hasStructure) {
-    aiPanel.innerHTML = `<div class="ai-response">
-      <div class="ai-block explain">
-        <div class="ai-block-label">AI Response</div>
-        <div class="ai-block-body">${escapeHtml(text)}</div>
-      </div>
-    </div>`;
-    return;
-  }
-
-  let html = `<div class="ai-response">`;
-
-  if (sections.reason) {
-    html += `<div class="ai-block reason">
-      <div class="ai-block-label">⚠ Reason</div>
-      <div class="ai-block-body">${escapeHtml(sections.reason)}</div>
-    </div>`;
-  }
-  if (sections.line) {
-    html += `<div class="ai-block reason">
-      <div class="ai-block-label">📍 Line Issue</div>
-      <div class="ai-block-body">${escapeHtml(sections.line)}</div>
-    </div>`;
-  }
-  if (sections.fix) {
-    html += `<div class="ai-block fix">
-      <div class="ai-block-label">✓ Suggested Fix</div>
-      <div class="ai-block-body">${escapeHtml(sections.fix)}</div>
-    </div>`;
-  }
-  if (sections.explain) {
-    html += `<div class="ai-block explain">
-      <div class="ai-block-label">💡 Explanation</div>
-      <div class="ai-block-body">${escapeHtml(sections.explain)}</div>
-    </div>`;
-  }
-
-  html += `</div>`;
-  aiPanel.innerHTML = html;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function extract(text, label) {
-  const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n[A-Z ]+:|$)`, "i");
-  const match   = text.match(pattern);
-  return match ? match[1].trim() : "";
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-// ─── "Bhai, Output Galat Hai!" — Logic Debugger ───────────────────────────────
-let bhaiCooldownActive = false;
-let bhaiCooldownInterval = null;
-
-document.getElementById("bhai-goal").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !bhaiCooldownActive) logicDebug();
+// ─── AI Chat — logic errors & general follow-up questions ────────────────────
+// The user types a message (e.g. "Sum sahi nahi ho raha hai"). We always send
+// the FULL current editor code + last run output as context, so the user never
+// has to copy-paste code themselves.
+document.getElementById("ai-chat-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendChatMessage();
 });
 
-async function logicDebug() {
-  if (bhaiCooldownActive) return;
-
-  const code         = editor.getValue().trim();
-  const language     = currentLang;
-  const actualOutput = Array.from(document.querySelectorAll("#terminal .t-stdout .t-text, #terminal .t-stderr .t-text"))
-    .map(el => el.textContent).join("\n").trim();
-  const userGoal     = document.getElementById("bhai-goal").value.trim();
-
-  if (!userGoal) {
-    document.getElementById("bhai-goal").focus();
-    showBhaiResult("warn", "⚠️ Pehle apna goal likho bhai — kya chahiye tha output mein?");
+async function sendChatMessage() {
+  const input = document.getElementById("ai-chat-input");
+  const userMsg = input.value.trim();
+  if (!userMsg) {
+    input.focus();
     return;
   }
-  if (!code) {
-    showBhaiResult("warn", "⚠️ Editor mein kuch code toh likho pehle!");
-    return;
-  }
+  if (!editor) return;
 
-  const prompt = `[LOGIC DEBUG REQUEST — Not a syntax error]
+  const code = editor.getValue().trim();
+  const aiBadge = document.getElementById("ai-badge");
+  const sendBtn = document.getElementById("btn-send");
 
-Language: ${language}
+  addUserChatBubble(userMsg);
+  chatHistory.push({ role: "user", text: userMsg });
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
 
---- User's Code ---
+  const prompt = `[LOGIC / FOLLOW-UP DEBUG REQUEST]
+
+Language: ${currentLang}
+
+--- Current Code (full editor contents) ---
 ${code}
 
---- Actual Output (what the code printed) ---
-${actualOutput || "(no output / not run yet)"}
+--- Last Program Output ---
+${lastRunOutput || "(not run yet)"}
 
---- What the Student Wanted ---
-${userGoal}
+--- User's Message ---
+${userMsg}
 
 --- Your Task ---
-You are a friendly college senior (bhaiya/didi) helping a junior find a LOGIC bug — NOT a syntax error.
-The code runs fine but gives the wrong output.
+You are a friendly, encouraging coding assistant (bhaiya/didi style, Hinglish ok if the
+user writes in Hinglish, otherwise match their language).
+The code may run fine but give the wrong output, or the user may just be asking a
+follow-up question about their code.
 
 RULES:
-1. Reply in Hinglish (mix of Hindi + English), warm and encouraging tone.
-2. DO  give the corrected code directly — guide them why this happning.
-3. Use this exact structure:
+1. If this looks like a logic bug (wrong output, not a crash), DO NOT give the fixed
+   code directly — guide them with a hint instead, using this structure:
+SAMAJH: [1-2 lines: what the code is doing vs what user wanted]
+HINT: [one clear clue about which part of the logic is wrong — no full solution]
+SOCHO: [one guiding question to push their thinking]
+2. If it's a general question about the code, answer directly and concisely using:
+EXPLANATION: [clear, concise answer]
+3. Keep it short and friendly.`;
 
-SAMAJH: [In 1-2 lines, explain what the code is actually doing vs what student wanted — simple Hinglish]
-HINT: [One clear clue about which part of the logic is wrong — loop condition? index? operator? — no spoilers]
-SOCHO: [Ask them one guiding question to push their thinking AND INDICATE TO THE PROBLUME,]
-
-Keep it short, friendly, and do write the fix and so the main fix show the line and fix.`;
-
-  const btn = document.getElementById("btn-bhai");
-  btn.disabled = true;
-  document.getElementById("btn-bhai-text").textContent = "Thinking...";
-  showBhaiResult("thinking", "");
+  addAiThinkingBubble();
+  aiBadge.textContent = "THINKING";
+  aiBadge.className = "panel-badge ai-thinking";
 
   try {
     const res = await fetch(AI_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code:     code,
-        error:    prompt,
-        language: language,
-        user_id:  "logic_debug_user"
+        code: code,
+        error: prompt,
+        language: currentLang,
+        user_id: "logic_debug_user"
       })
     });
 
@@ -499,116 +514,50 @@ Keep it short, friendly, and do write the fix and so the main fix show the line 
       throw new Error(`Backend error (${res.status}): ${errData.detail || res.statusText}`);
     }
 
-    const data   = await res.json();
+    const data = await res.json();
     const aiText = data?.data?.[0] || data?.output || data?.response || data?.text || "";
     if (!aiText) throw new Error("Empty response from AI");
 
-    renderBhaiResponse(aiText);
-    startBhaiCooldown(45);
+    addAiResponseBubble(aiText);
+    chatHistory.push({ role: "ai", text: aiText });
+    aiBadge.textContent = "DONE";
+    aiBadge.className = "panel-badge success";
 
   } catch (err) {
-    showBhaiResult("error", `⚠️ AI se baat nahi ho payi: ${escapeHtml(err.message)}\n\nThodi der baad try karo.`);
-    btn.disabled = false;
-    document.getElementById("btn-bhai-text").textContent = "Debug Logic";
+    addErrorChatBubble(`Couldn't reach the AI: ${err.message}. Try again in a bit.`);
+    aiBadge.textContent = "FAILED";
+    aiBadge.className = "panel-badge error";
+  } finally {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
   }
 }
 
-// ── Render the structured Bhai AI response ────────────────────────────────────
-function renderBhaiResponse(text) {
-  const samajh = extractBhai(text, "SAMAJH");
-  const hint   = extractBhai(text, "HINT");
-  const socho  = extractBhai(text, "SOCHO");
-
-  const hasStructure = samajh || hint || socho;
-
-  if (!hasStructure) {
-    showBhaiResult("success", text);
-    return;
-  }
-
-  const result = document.getElementById("bhai-result");
-  let html = `<div class="bhai-blocks">`;
-
-  if (samajh) html += `
-    <div class="bhai-block bhai-samajh">
-      <div class="bhai-block-label">🧠 Samajh</div>
-      <div class="bhai-block-body">${escapeHtml(samajh)}</div>
-    </div>`;
-
-  if (hint) html += `
-    <div class="bhai-block bhai-hint">
-      <div class="bhai-block-label">💡 Hint</div>
-      <div class="bhai-block-body">${escapeHtml(hint)}</div>
-    </div>`;
-
-  if (socho) html += `
-    <div class="bhai-block bhai-socho">
-      <div class="bhai-block-label">🤔 Socho...</div>
-      <div class="bhai-block-body">${escapeHtml(socho)}</div>
-    </div>`;
-
-  html += `</div>`;
-  result.innerHTML = html;
+// ─── Interstitial ad (every 5th RUN click) ─────────────────────────────────────
+// Fires on the 5th, 10th, 15th... RUN click (runClickCount % 5 === 0, see above).
+// This only toggles the overlay's visibility — it does not block or await
+// anything, so the code run already in flight continues normally whether or
+// not the user closes the ad.
+function showInterstitialAd() {
+  const overlay = document.getElementById("interstitial-overlay");
+  overlay.classList.add("visible");
 }
+document.getElementById("interstitial-close").addEventListener("click", () => {
+  document.getElementById("interstitial-overlay").classList.remove("visible");
+});
 
-// ── Helper: show simple state messages inside bhai-result ─────────────────────
-function showBhaiResult(type, message) {
-  const result = document.getElementById("bhai-result");
-
-  if (type === "thinking") {
-    result.innerHTML = `
-      <div class="bhai-thinking">
-        <span>AI soch raha hai</span>
-        <div class="ai-thinking-dots">
-          <span></span><span></span><span></span>
-        </div>
-      </div>`;
-    return;
-  }
-
-  const colorMap = { warn: "var(--yellow)", error: "var(--red)", success: "var(--text)" };
-  result.innerHTML = `
-    <div style="padding: 14px 16px; font-size: 12.5px; line-height: 1.7;
-                color: ${colorMap[type] || "var(--text)"}; white-space: pre-wrap;">
-      ${escapeHtml(message)}
-    </div>`;
-}
-
-// ── Extract a section from the structured Bhai response ───────────────────────
-function extractBhai(text, label) {
-  const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n[A-Z]+:|$)`, "i");
-  const match   = text.match(pattern);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function extractSection(text, label) {
+  const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n[A-Z ]+:|$)`, "i");
+  const match = text.match(pattern);
   return match ? match[1].trim() : "";
 }
 
-// ── 45-second cooldown ────────────────────────────────────────────────────────
-function startBhaiCooldown(seconds) {
-  bhaiCooldownActive = true;
-
-  const btn       = document.getElementById("btn-bhai");
-  const timerEl   = document.getElementById("bhai-cooldown-timer");
-  const wrapEl    = document.getElementById("bhai-cooldown-wrap");
-  const goalInput = document.getElementById("bhai-goal");
-
-  btn.disabled       = true;
-  goalInput.disabled = true;
-  wrapEl.classList.add("visible");
-  document.getElementById("btn-bhai-text").textContent = "Cooldown...";
-
-  let remaining = seconds;
-  timerEl.textContent = remaining;
-
-  bhaiCooldownInterval = setInterval(() => {
-    remaining--;
-    timerEl.textContent = remaining;
-
-    if (remaining <= 0) {
-      clearInterval(bhaiCooldownInterval);
-      bhaiCooldownActive   = false;
-      btn.disabled         = false;
-      goalInput.disabled   = false;
-      wrapEl.classList.remove("visible");
-      document.getElementById("btn-bhai-text").textContent = "Debug Logic";
-    }
-  }, 1000);
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
