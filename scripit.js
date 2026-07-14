@@ -561,3 +561,144 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+/* ════════════════════════════════════════════════════════
+   DRAWER & FEEDBACK FORM LOGIC
+════════════════════════════════════════════════════════ */
+
+/* ─── Drawer State & DOM Elements ────────────────────── */
+const drawerState = {
+  isOpen: false,
+  activeTab: 'about'
+};
+
+const drawerElements = {
+  drawer: document.getElementById('drawer'),
+  backdrop: document.getElementById('drawer-backdrop'),
+  closeBtn: document.getElementById('drawer-close'),
+  navBtns: document.querySelectorAll('.drawer-nav-btn'),
+  tabContents: document.querySelectorAll('.drawer-content'),
+  feedbackForm: document.getElementById('feedback-form'),
+  messageInput: document.getElementById('feedback-message'),
+  charCount: document.getElementById('char-count'),
+  formStatus: document.getElementById('form-status')
+};
+
+/* ─── Drawer Toggle Functions ────────────────────────── */
+function openDrawer(tab = 'about') {
+  drawerState.isOpen = true;
+  drawerState.activeTab = tab;
+  
+  drawerElements.drawer.classList.add('open');
+  drawerElements.backdrop.classList.add('visible');
+  document.body.style.overflow = 'hidden';
+  
+  switchTab(tab);
+}
+
+function closeDrawer() {
+  drawerState.isOpen = false;
+  
+  drawerElements.drawer.classList.remove('open');
+  drawerElements.backdrop.classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+function switchTab(tabName) {
+  // Update active nav button
+  drawerElements.navBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  
+  // Update visible content
+  drawerElements.tabContents.forEach(content => {
+    content.classList.toggle('hidden', content.id !== `tab-${tabName}`);
+  });
+  
+  drawerState.activeTab = tabName;
+}
+
+/* ─── Event Listeners ────────────────────────────────── */
+drawerElements.closeBtn.addEventListener('click', closeDrawer);
+drawerElements.backdrop.addEventListener('click', closeDrawer);
+
+drawerElements.navBtns.forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// Close drawer on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && drawerState.isOpen) {
+    closeDrawer();
+  }
+});
+
+/* ─── Character Counter for Textarea ────────────────── */
+if (drawerElements.messageInput) {
+  drawerElements.messageInput.addEventListener('input', () => {
+    const count = drawerElements.messageInput.value.length;
+    drawerElements.charCount.textContent = count;
+  });
+}
+
+/* ─── Feedback Form Submission ───────────────────────── */
+if (drawerElements.feedbackForm) {
+  drawerElements.feedbackForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const submitBtn = drawerElements.feedbackForm.querySelector('.btn-submit');
+    const originalText = submitBtn.textContent;
+    
+    // Show loading state
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    drawerElements.formStatus.classList.remove('hidden', 'success', 'error');
+    drawerElements.formStatus.classList.add('loading');
+    drawerElements.formStatus.textContent = '⟳ Sending your feedback…';
+    
+    try {
+      const formData = new FormData(drawerElements.feedbackForm);
+      const response = await fetch(drawerElements.feedbackForm.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        // Success
+        drawerElements.formStatus.classList.remove('loading', 'error');
+        drawerElements.formStatus.classList.add('success');
+        drawerElements.formStatus.textContent = '✓ Thank you! We received your feedback.';
+        drawerElements.feedbackForm.reset();
+        drawerElements.charCount.textContent = '0';
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
+          drawerElements.formStatus.classList.add('hidden');
+        }, 3000);
+      } else {
+        throw new Error('Form submission failed');
+      }
+    } catch (error) {
+      // Error
+      drawerElements.formStatus.classList.remove('loading', 'success');
+      drawerElements.formStatus.classList.add('error');
+      drawerElements.formStatus.textContent = '✕ Error sending feedback. Please try again.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  });
+}
+
+/* ─── Public API for opening drawer from header ────── */
+function openAbout() {
+  openDrawer('about');
+}
+
+function openFeedback() {
+  openDrawer('feedback');
+}

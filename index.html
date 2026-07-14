@@ -53,6 +53,8 @@
       <div class="header-meta">
         <span class="status-dot"></span>
         <span id="status-label">READY</span>
+        <button class="header-nav-btn" onclick="openAbout()" title="About">ℹ</button>
+        <button class="header-nav-btn" onclick="openFeedback()" title="Feedback">💬</button>
       </div>
     </header>
 
@@ -184,6 +186,166 @@
       </div>
     </div>
   </div>
+
+  <!-- ════════════════════════════════════════════════════
+       DRAWER: About & Feedback
+  ════════════════════════════════════════════════════ -->
+
+  <!-- Drawer backdrop -->
+  <div id="drawer-backdrop" class="drawer-backdrop"></div>
+
+  <!-- Drawer container -->
+  <div id="drawer" class="drawer">
+    <!-- Close button (fixed at top) -->
+    <button id="drawer-close" class="drawer-close" aria-label="Close drawer">✕</button>
+
+    <!-- Drawer navigation tabs -->
+    <div class="drawer-nav">
+      <button class="drawer-nav-btn active" data-tab="about">
+        <span class="nav-icon">ℹ</span> About
+      </button>
+      <button class="drawer-nav-btn" data-tab="feedback">
+        <span class="nav-icon">💬</span> Feedback
+      </button>
+    </div>
+
+    <!-- ABOUT TAB -->
+    <div class="drawer-content" id="tab-about">
+      <div class="content-header">
+        <h1>About CompileX</h1>
+        <p class="content-subtitle">AI-Powered Code Execution & Learning</p>
+      </div>
+
+      <div class="content-body">
+        <section class="about-section">
+          <h2>Mission</h2>
+          <p>CompileX empowers developers and learners to write, execute, and debug code instantly. By combining a lightweight online compiler with AI-powered error explanations, we eliminate friction from the learning and development workflow.</p>
+        </section>
+
+        <section class="about-section">
+          <h2>The Epic Loop Initiative</h2>
+          <p>Epic Loop is our commitment to continuous improvement through rapid iteration. Each feature, bug fix, and user insight feeds back into the platform, creating an evolving ecosystem that grows smarter with every use.</p>
+          <p style="margin-top: 10px;">Core principles:</p>
+          <ul class="about-list">
+            <li>Fast feedback loops for learners</li>
+            <li>Real-time error diagnosis with AI guidance</li>
+            <li>Zero setup — code anywhere, anytime</li>
+            <li>Community-driven feature development</li>
+          </ul>
+        </section>
+
+        <section class="about-section">
+          <h2>Supported Languages</h2>
+          <div class="lang-grid">
+            <div class="lang-card">
+              <span class="lang-icon">☕</span>
+              <span>Java</span>
+            </div>
+            <div class="lang-card">
+              <span class="lang-icon">🐍</span>
+              <span>Python</span>
+            </div>
+            <div class="lang-card">
+              <span class="lang-icon">⚙️</span>
+              <span>C++</span>
+            </div>
+            <div class="lang-card">
+              <span class="lang-icon">📜</span>
+              <span>JavaScript</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="about-section">
+          <h2>Why CompileX?</h2>
+          <ul class="about-list">
+            <li><strong>No Installation Required:</strong> Compile and run code in your browser instantly.</li>
+            <li><strong>AI Debugging:</strong> Get intelligent explanations for errors and logic issues.</li>
+            <li><strong>Fast & Lightweight:</strong> Optimized for speed and accessibility.</li>
+            <li><strong>Free & Open-Minded:</strong> Built for learners, students, and developers.</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <!-- FEEDBACK TAB -->
+    <div class="drawer-content hidden" id="tab-feedback">
+      <div class="content-header">
+        <h1>Send Feedback</h1>
+        <p class="content-subtitle">Help us improve CompileX</p>
+      </div>
+
+      <div class="content-body">
+        <form id="feedback-form" class="feedback-form" action="https://formspree.io/f/mpqvwqqg" method="POST" novalidate>
+          
+          
+          <div class="form-group">
+            <label for="feedback-name">Name</label>
+            <input 
+              type="text" 
+              id="feedback-name" 
+              name="name" 
+              placeholder="Your name (optional)"
+              maxlength="100"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="feedback-email">Email</label>
+            <input 
+              type="email" 
+              id="feedback-email" 
+              name="email" 
+              placeholder="your@email.com"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="feedback-type">Feedback Type</label>
+            <select id="feedback-type" name="type" required>
+              <option value="">Select type…</option>
+              <option value="bug">🐛 Bug Report</option>
+              <option value="feature">✨ Feature Request</option>
+              <option value="improvement">📈 Improvement Suggestion</option>
+              <option value="other">💭 Other</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="feedback-message">Message</label>
+            <textarea 
+              id="feedback-message" 
+              name="message" 
+              placeholder="Tell us what's on your mind…&#10;(Include language, steps to reproduce, or context if reporting a bug)"
+              rows="6"
+              maxlength="2000"
+              required
+            ></textarea>
+            <div class="char-count">
+              <span id="char-count">0</span> / 2000
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="subscribe" value="yes" />
+              <span>Email me updates about CompileX</span>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-submit">Send Feedback</button>
+            <button type="reset" class="btn-reset-form">Clear</button>
+          </div>
+
+          <div id="form-status" class="form-status hidden"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════ -->
 
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="scripit.js"></script>
